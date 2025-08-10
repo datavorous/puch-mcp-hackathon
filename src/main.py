@@ -121,6 +121,9 @@ mcp = FastMCP(
     auth=SimpleBearerAuthProvider(TOKEN),
 )
 
+@mcp.tool
+async def validate() -> str:
+    return MY_NUMBER
 
 # REDDIT SCRAPER TOOL
 
@@ -1662,9 +1665,10 @@ async def find_medicine_details(
 
 
 async def main():
-    print("Starting minimal MCP server on http://0.0.0.0:8085")
+    print("Starting minimal MCP server")
     try:
-        await mcp.run_async("streamable-http", host="0.0.0.0", port=8085)
+        port = int(os.getenv("PORT", 8085))
+        await mcp.run_async("streamable-http", host="0.0.0.0", port=port)
     finally:
         await asyncio.to_thread(save_data)
         print("Shutdown: data saved.")
