@@ -111,6 +111,19 @@
 2. *"Make a scatter plot of height vs weight data with categories for different age groups."*
 
 
+## Medicine Information Provider
+
+<img src="media/med.png">
+
+**Description**: Retrieves information about any given medicine from Tata 1mg.
+
+**Parameters**:
+- `medicine_name` (string): Name of the medicine
+
+**Example Prompts**:
+1. *"Hey, the pharmacy gave me montelukast, is this the right medicine for allergies?"*
+
+
 ## User Preference Management
 
 ### Get User Preference

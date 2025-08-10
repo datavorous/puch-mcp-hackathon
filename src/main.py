@@ -1,6 +1,6 @@
 from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
 from mcp.server.auth.provider import AccessToken
-from typing import List, Annotated, Optional
+from typing import List, Annotated, Optional, Tuple
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from mcp.types import INVALID_PARAMS
@@ -14,7 +14,8 @@ from time import time
 import json
 import threading
 import asyncio
-import io
+import io, httpx
+from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 import base64
 from typing_extensions import Annotated
@@ -28,6 +29,7 @@ MY_NUMBER = os.environ.get("MY_NUMBER")
 DATA_FILE = "user_data.json"
 USER_DATA = {}
 USER_ACTIVITY_CACHE = {}
+USER_AGENT = os.environ.get("USER_AGENT")
 
 COOLDOWN_SECONDS = 80
 
@@ -192,7 +194,7 @@ async def reddit_recent_posts_scraper(
     async with asyncpraw.Reddit(
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
-        user_agent=os.environ.get("USER_AGENT"),
+        user_agent=os.environ.get("USER_AGENT_REDDIT"),
         read_only=True,
     ) as reddit:
         try:
@@ -1116,7 +1118,7 @@ async def make_pie_chart(
 
     legend_x = chart_x + chart_size + 60
     legend_y = chart_y + 20
-    legend_spacing = 35
+    legend_spacing = 40
 
     draw.text((legend_x, legend_y - 25), "Legend", fill="#374151", font=legend_font)
 
@@ -1557,6 +1559,106 @@ async def make_scatter_plot(
 
     except Exception as e:
         raise McpError(ErrorData(code=INTERNAL_ERROR, message=str(e)))
+
+
+# MEDICINE DATA TOOL HERE
+
+
+async def _get_medicine_page(url: str) -> BeautifulSoup | None:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers={"User-Agent": USER_AGENT})
+            response.raise_for_status()
+            return BeautifulSoup(response.text, "html.parser")
+    except httpx.RequestError:
+        return None
+
+
+def _safe_get_text(
+    soup: BeautifulSoup, selector: str, default: str = "Not found"
+) -> str:
+    tag = soup.select_one(selector)
+    return tag.get_text(strip=True) if tag else default
+
+
+async def _find_medicine_on_1mg(
+    medicine_name: str,
+) -> Tuple[str, str] | Tuple[None, None]:
+    search_url = (
+        f"https://www.1mg.com/search/all?name={medicine_name.replace(' ', '%20')}"
+    )
+    soup = await _get_medicine_page(search_url)
+    if not soup:
+        return None, None
+    link_selector = (
+        "div[class*='style__horizontal-card'] > a, a[class*='style__product-link']"
+    )
+    product_link_tag = soup.select_one(link_selector)
+    if not product_link_tag or not product_link_tag.get("href"):
+        return None, None
+    product_url = "https://www.1mg.com" + product_link_tag["href"]
+    name_selector = "div[class*='style__pro-title'], span[class*='style__pro-title']"
+    official_name = _safe_get_text(product_link_tag, name_selector, medicine_name)
+    return official_name, product_url
+
+
+FIND_MEDICINE_DESC = RichToolDescription(
+    description="Finds detailed information for a specific medicine, including its official name, uses, side effects, price, and substitutes.",
+    use_when="When a user asks for details about a specific medicine by name.",
+    side_effects="Fetches live data by scraping the Tata 1mg website.",
+)
+
+
+@mcp.tool(description=FIND_MEDICINE_DESC.model_dump_json())
+async def find_medicine_details(
+    medicine_name: Annotated[str, Field(description="The name of the medicine.")],
+) -> str:
+    if not medicine_name.strip():
+        raise McpError(
+            ErrorData(code=INVALID_PARAMS, message="Medicine name cannot be empty.")
+        )
+    official_name, product_url = await _find_medicine_on_1mg(medicine_name)
+    if not product_url:
+        return f"Sorry, I could not find any medicine matching '{medicine_name}'. Please check the spelling."
+
+    p_soup = await _get_medicine_page(product_url)
+    if not p_soup:
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"Network error while scraping product page for {official_name}.",
+            )
+        )
+
+    details = {
+        "official_name": official_name,
+        "product_url": product_url,
+        "manufacturer": _safe_get_text(p_soup, "a[href*='/marketer/']"),
+        "estimated_price": _safe_get_text(
+            p_soup, "span[class*='PriceBoxPlanOption__offer-price']"
+        ),
+        "primary_use": _safe_get_text(
+            p_soup, "div#overview div[class*='DrugOverview__content']"
+        ),
+        "side_effects": _safe_get_text(
+            p_soup, "div#side_effects div[class*='DrugOverview__content']"
+        ),
+        "substitutes": [],
+    }
+    substitutes_list = p_soup.select("div[class*='SubstituteItem__item']")
+    for sub_item in substitutes_list:
+        sub_name = _safe_get_text(sub_item, "div[class*='SubstituteItem__name'] a")
+        sub_price = _safe_get_text(sub_item, "div[class*='SubstituteItem__unit-price']")
+        if sub_name != "Not found":
+            details["substitutes"].append({"name": sub_name, "price": sub_price})
+
+    output_yaml = yaml.dump(details, sort_keys=False, allow_unicode=True)
+    prompt_for_ai = (
+        "\n---\n"
+        "Present this information clearly to the user, using the `official_name`. ALWAYS include the `product_url`. "
+        "ALWAYS mention the substitutes as a cost-saving option."
+    )
+    return output_yaml + prompt_for_ai
 
 
 async def main():
