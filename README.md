@@ -1,15 +1,6 @@
----
-title: Puchai Hackathon
-emoji: 📚
-colorFrom: purple
-colorTo: yellow
-sdk: docker
-pinned: false
-license: mit
-short_description: 'hackathon project :: MCP'
----
-
 # PuchAI Hackathon
+
+# 🌟 [CLICK TO USE THE MCP](https://puch.ai/mcp/sxBT2uUNOG)
 
 
 <img src="media/mcp.png">
