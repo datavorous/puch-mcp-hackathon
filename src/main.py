@@ -1664,6 +1664,34 @@ async def find_medicine_details(
     return output_yaml + prompt_for_ai
 
 
+
+@mcp.tool
+async def about() -> dict[str, str]:
+    server_name = "MultiToolMarketing"
+    server_description = dedent("""
+    This MCP server is a comprehensive toolkit designed for market research, data visualization, 
+    personal productivity, and information management. It provides powerful tools for:
+
+    • *Reddit Research*: Scrape and analyze subreddit posts with keyword filtering and intent
+      scoring for market validation and sentiment analysis
+    • *Data Visualization*: Create professional charts (bar, line, pie, scatter plots) with 
+      customizable styling and modern aesthetics
+    • *Medicine Information*: Retrieve detailed medicine information from Tata 1mg for 
+      health-related queries
+    • *User Preference Management*: Store and retrieve personal preferences, interests, and 
+      memorable information with persistent storage
+    • *Task Management*: Complete TODO list functionality with add, list, and delete operations
+
+    Perfect for entrepreneurs, researchers, and professionals who need market insights, 
+    visual data representation, and personal organization tools all in one place.
+    """)
+    return {
+        "name": server_name,
+        "description": server_description
+    }
+
+
+
 async def main():
     print("Starting minimal MCP server")
     try:
